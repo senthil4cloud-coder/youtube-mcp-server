@@ -246,17 +246,17 @@ routes = [
 app = Starlette(routes=routes)
 
 # Mount the FastMCP server's ASGI app for MCP protocol support
+# Use path prefix to avoid redirect issues
 try:
     logger.info("Mounting FastMCP's streaming HTTP app for MCP protocol")
-    # FastMCP has built-in ASGI app support for MCP protocol
-    # Mount it at /mcp path for Claude to connect
-    app.mount("/mcp", server.streamable_http_app)
+    # Mount without slash to avoid 307 redirect
+    app.mount("/mcp", server.streamable_http_app, name="mcp")
     logger.info("MCP protocol app mounted successfully at /mcp")
 except AttributeError as e:
     logger.error(f"streamable_http_app not available: {e}")
-    logger.info("Trying alternative SSE app mount...")
     try:
-        app.mount("/mcp", server.sse_app)
+        logger.info("Trying fallback to sse_app")
+        app.mount("/mcp", server.sse_app, name="mcp")
         logger.info("SSE app mounted successfully at /mcp")
     except AttributeError as e2:
         logger.error(f"Neither streamable_http_app nor sse_app available: {e2}")

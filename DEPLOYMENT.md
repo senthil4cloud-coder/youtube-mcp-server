@@ -17,11 +17,8 @@ This guide walks you through deploying your YouTube MCP Server to Google Cloud R
 # Initialize gcloud (if first time)
 gcloud init
 
-# Create a new project (or use existing)
-gcloud projects create youtube-mcp-server --name="YouTube MCP Server"
-
-# Set default project
-gcloud config set project youtube-mcp-server
+# Set default project to your existing project
+gcloud config set project emerging-tech-nation
 
 # Enable required APIs
 gcloud services enable run.googleapis.com
@@ -59,18 +56,18 @@ docker run -p 8080:8080 \
 # Configure Docker for GCP
 gcloud auth configure-docker
 
-# Tag your image
-docker tag youtube-mcp-server gcr.io/youtube-mcp-server/youtube-mcp-server:latest
+# Tag your image with your project ID
+docker tag youtube-mcp-server gcr.io/emerging-tech-nation/youtube-mcp-server:latest
 
 # Push to GCR
-docker push gcr.io/youtube-mcp-server/youtube-mcp-server:latest
+docker push gcr.io/emerging-tech-nation/youtube-mcp-server:latest
 ```
 
 ### 5. Deploy to Cloud Run
 
 ```bash
 gcloud run deploy youtube-mcp-server \
-  --image gcr.io/youtube-mcp-server/youtube-mcp-server:latest \
+  --image gcr.io/emerging-tech-nation/youtube-mcp-server:latest \
   --platform managed \
   --region us-central1 \
   --memory 512Mi \
@@ -120,7 +117,7 @@ If you deployed without credentials:
 gcloud run deploy youtube-mcp-server \
   --region us-central1 \
   --set-env-vars YOUTUBE_API_KEY=your_key,CHANNEL_ID=your_id \
-  --image gcr.io/youtube-mcp-server/youtube-mcp-server:latest
+  --image gcr.io/emerging-tech-nation/youtube-mcp-server:latest
 ```
 
 ## Cost Estimation
@@ -177,12 +174,12 @@ Cloud Run automatically scales:
 docker build -t youtube-mcp-server .
 
 # Push to registry
-docker tag youtube-mcp-server gcr.io/youtube-mcp-server/youtube-mcp-server:latest
-docker push gcr.io/youtube-mcp-server/youtube-mcp-server:latest
+docker tag youtube-mcp-server gcr.io/emerging-tech-nation/youtube-mcp-server:latest
+docker push gcr.io/emerging-tech-nation/youtube-mcp-server:latest
 
 # Deploy new version
 gcloud run deploy youtube-mcp-server \
-  --image gcr.io/youtube-mcp-server/youtube-mcp-server:latest \
+  --image gcr.io/emerging-tech-nation/youtube-mcp-server:latest \
   --region us-central1
 ```
 

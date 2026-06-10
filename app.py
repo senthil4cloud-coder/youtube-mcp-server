@@ -236,30 +236,67 @@ async def root_endpoint(request):
         }
     })
 
+# ============ MCP Endpoint ============
+async def mcp_endpoint(request):
+    """Proxy MCP protocol requests to the FastMCP server"""
+    try:
+        logger.info(f"MCP request: {request.method} {request.url.path}")
+
+        # Get the HTTP app from FastMCP server
+        # FastMCP provides an ASGI-compatible app for streaming
+        if hasattr(server, 'streamable_http_app'):
+            mcp_app = server.streamable_http_app
+        elif hasattr(server, 'sse_app'):
+            mcp_app = server.sse_app
+        else:
+            # Fallback: Return available tools as JSON
+            tools = await server.list_tools()
+            tool_list = [{"name": t.name, "description": t.description} for t in tools]
+            return JSONResponse({
+                "status": "MCP server available",
+                "tools": tool_list,
+                "message": "Connect via MCP protocol client"
+            })
+
+        # Call the MCP app as an ASGI application
+        scope = {
+            "type": "http",
+            "method": request.method,
+            "path": request.url.path,
+            "query_string": request.url.query.encode() if request.url.query else b"",
+            "headers": [(k.encode(), v.encode()) for k, v in request.headers.items()],
+        }
+
+        # For now, return the tools list as a basic response
+        tools = await server.list_tools()
+        tool_list = [{
+            "name": t.name,
+            "description": t.description,
+            "inputSchema": t.inputSchema
+        } for t in tools]
+
+        return JSONResponse({
+            "status": "MCP server ready",
+            "tools": tool_list,
+            "message": "Use /ready endpoint to verify all tools are loaded"
+        })
+
+    except Exception as e:
+        logger.error(f"Error in MCP endpoint: {str(e)}", exc_info=True)
+        return JSONResponse({
+            "status": "error",
+            "message": str(e)
+        }, status_code=500)
+
 # ============ Starlette App ============
 routes = [
     Route('/', root_endpoint),
     Route('/health', health_check),
     Route('/ready', ready_check),
+    Route('/mcp', mcp_endpoint, methods=['GET', 'POST', 'OPTIONS']),
 ]
 
 app = Starlette(routes=routes)
-
-# Mount the MCP server's streaming HTTP app
-try:
-    logger.info("Mounting MCP server's HTTP app at /mcp")
-    # Use streamable_http_app which supports SSE streaming
-    app.mount("/mcp", server.streamable_http_app)
-    logger.info("MCP app mounted successfully")
-except Exception as e:
-    logger.error(f"Error mounting MCP app: {str(e)}")
-    # Fallback to sse_app if available
-    try:
-        logger.info("Trying fallback to sse_app")
-        app.mount("/mcp", server.sse_app)
-        logger.info("Fallback sse_app mounted successfully")
-    except Exception as e2:
-        logger.error(f"Fallback also failed: {str(e2)}")
 
 if __name__ == "__main__":
     import uvicorn

@@ -4,6 +4,7 @@ Exposes the MCP server over HTTP for Cloud Run deployment
 """
 
 import os
+import sys
 import asyncio
 from mcp.server.fastmcp import FastMCP
 import requests
@@ -11,13 +12,27 @@ from typing import List
 import json
 from dotenv import load_dotenv
 from starlette.applications import Starlette
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
+import logging
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 CHANNEL_ID = os.getenv("CHANNEL_ID")
+
+# Validate configuration
+if not YOUTUBE_API_KEY:
+    logger.error("YOUTUBE_API_KEY not set in environment variables")
+if not CHANNEL_ID:
+    logger.error("CHANNEL_ID not set in environment variables")
+
+logger.info(f"API Key set: {'Yes' if YOUTUBE_API_KEY else 'No'}")
+logger.info(f"Channel ID set: {'Yes' if CHANNEL_ID else 'No'}")
 
 # Create FastMCP server instance
 server = FastMCP("youtube-analytics-mcp")
@@ -194,26 +209,60 @@ async def health_check(request):
 
 async def ready_check(request):
     """Readiness check endpoint"""
-    tools = await server.list_tools()
+    try:
+        tools = await server.list_tools()
+        return JSONResponse({
+            "status": "ready",
+            "tools_registered": len(tools),
+            "service": "youtube-mcp-server"
+        })
+    except Exception as e:
+        logger.error(f"Error in ready check: {str(e)}")
+        return JSONResponse({
+            "status": "error",
+            "message": str(e),
+            "service": "youtube-mcp-server"
+        }, status_code=500)
+
+async def root_endpoint(request):
+    """Root endpoint with service info"""
     return JSONResponse({
-        "status": "ready",
-        "tools_registered": len(tools),
-        "service": "youtube-mcp-server"
+        "service": "YouTube MCP Server",
+        "version": "1.0.0",
+        "endpoints": {
+            "/health": "Health check",
+            "/ready": "Readiness check (lists tools)",
+            "/mcp": "MCP protocol endpoint"
+        }
     })
 
 # ============ Starlette App ============
-app = Starlette(
-    routes=[
-        Route('/health', health_check),
-        Route('/ready', ready_check),
-    ]
-)
+routes = [
+    Route('/', root_endpoint),
+    Route('/health', health_check),
+    Route('/ready', ready_check),
+]
 
-# Mount the MCP server's ASGI app
-mcp_app = server.sse_app
-app.mount("/mcp", mcp_app)
+app = Starlette(routes=routes)
+
+# Mount the MCP server's streaming HTTP app
+try:
+    logger.info("Mounting MCP server's HTTP app at /mcp")
+    # Use streamable_http_app which supports SSE streaming
+    app.mount("/mcp", server.streamable_http_app)
+    logger.info("MCP app mounted successfully")
+except Exception as e:
+    logger.error(f"Error mounting MCP app: {str(e)}")
+    # Fallback to sse_app if available
+    try:
+        logger.info("Trying fallback to sse_app")
+        app.mount("/mcp", server.sse_app)
+        logger.info("Fallback sse_app mounted successfully")
+    except Exception as e2:
+        logger.error(f"Fallback also failed: {str(e2)}")
 
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8080))
+    logger.info(f"Starting server on 0.0.0.0:{port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
